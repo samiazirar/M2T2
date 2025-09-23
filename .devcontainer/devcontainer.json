@@ -2,7 +2,10 @@
   "name": "M2T2 Dev",
   "build": {
     "dockerfile": "Dockerfile",
-    "context": ".."
+    "context": "..",
+    "args": {
+      "CUDA_VERSION": "${localEnv:CUDA_VERSION:12.1.1}"
+    }
   },
   "runArgs": [
     "--gpus", "all",
@@ -15,7 +18,9 @@
   ],
   "containerEnv": {
     "CODEX_HOME": "/root/.codex",
-    "TORCH_CUDA_ARCH_LIST": "80;86;89;90;100"
+    "TORCH_CUDA_ARCH_LIST": "7.0;7.5;8.0;8.6;8.9;9.0",
+    "CUDA_VERSION": "${localEnv:CUDA_VERSION:12.1.1}",
+    "PYTORCH_CUDA_CHANNEL": "${localEnv:PYTORCH_CUDA_CHANNEL:}"
   },
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
   "workspaceFolder": "/workspace",

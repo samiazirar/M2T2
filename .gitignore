@@ -3,3 +3,11 @@ __pycache__
 .vscode
 build
 outputs
+*/pointnet/
+pointnet2_ops
+pointnet2_ops/
+*.so
+pointnet2_ops/*
+*/pointnet2_ops/
+pointnet2_ops
+pointnet2_ops/

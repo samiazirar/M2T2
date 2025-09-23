@@ -1,11 +1,15 @@
-# CUDA >=12.4 is required to build for sm_100 (Blackwell)
-# Use CUDA 12.8 to match the latest cu128 PyTorch wheels.
-FROM nvidia/cuda:12.8.0-devel-ubuntu22.04
+# Configurable CUDA version support - works with both old and new drivers
+# CUDA 12.1: For RTX 40 series and earlier, works with driver >=530
+# CUDA 12.8: For Blackwell GPUs (RTX 50 series), requires driver >=560
+ARG CUDA_VERSION=12.1.1
+FROM nvidia/cuda:${CUDA_VERSION}-devel-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Ensure any CUDA extensions compile for Ampere, Ada, Hopper, and Blackwell GPUs.
-ENV TORCH_CUDA_ARCH_LIST="80;86;89;90;100"
+# Ensure CUDA extensions cover the architectures we actively target.
+# Default: Pascal (7.0) through Hopper (9.0) - compatible with CUDA 12.1
+# Note: Blackwell (10.0) support requires PyTorch updates, not yet available
+ENV TORCH_CUDA_ARCH_LIST="7.0;7.5;8.0;8.6;8.9;9.0"
 
 # Base development tools and common libraries used by the project.
 RUN apt-get update && apt-get install -y --no-install-recommends \
