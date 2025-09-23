@@ -10,6 +10,7 @@ apt-get update && apt-get install -y --no-install-recommends \
     libavutil-dev \
     libswresample-dev \
     libswscale-dev \
+    openssh-client \
   && rm -rf /var/lib/apt/lists/*
 
 # Ensure pip itself is current inside the devcontainer runtime.
@@ -49,8 +50,23 @@ python -m pip install ./pointnet2_ops
 # Install the M2T2 package itself in editable mode for development.
 python -m pip install -e .
 
+# Configure SSH for GitHub access (using SSH agent forwarding from host)
+# Disable strict host key checking for GitHub to avoid known_hosts issues
+export GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+
 
 # Install git lfs
+if ! command -v git-lfs &> /dev/null; then
+  curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | bash
+  apt-get install -y git-lfs
+  git lfs install
+fi
+
+#if it does not already exist, clone the model repo 
+if [ ! -d "models" ]; then
+  git clone https://huggingface.co/wentao-yuan/m2t2 models
+fi
+
 # Confirm CUDA visibility inside the container (useful during post-create logs).
 python - <<'PY'
 import torch
@@ -59,3 +75,6 @@ print("CUDA available:", torch.cuda.is_available())
 if torch.cuda.is_available():
     print("CUDA device:", torch.cuda.get_device_name(0))
 PY
+
+echo "✅ Development container setup complete."
+echo "Run demo with meshcat-server and python demo.py eval.checkpoint=models/m2t2.pth eval.data_dir=sample_data/real_world/00 eval.mask_thresh=0.4 eval.num_runs=5"

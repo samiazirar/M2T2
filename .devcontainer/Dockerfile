@@ -44,14 +44,17 @@ RUN pip install -U "huggingface_hub[hf_xet]"
 # Prefer SSH for GitHub remotes to leverage mounted host SSH keys.
 RUN git config --system url."ssh://git@github.com/".insteadOf https://github.com/
 
-# Pre-populate the GitHub host key to avoid authenticity prompts in fresh containers.
-RUN mkdir -p /etc/ssh && ssh-keyscan -t rsa,ecdsa,ed25519 github.com >> /etc/ssh/ssh_known_hosts 2>/dev/null || true
 
 # Pre-copy requirement manifests to improve Docker build caching.
 COPY requirements.txt /tmp/requirements.txt
 
-# Mark the repository workspace as safe for Git operations.
+
+# Pre-populate GitHub host key to avoid prompts in fresh containers
+RUN mkdir -p /etc/ssh  && ssh-keyscan -t rsa,ecdsa,ed25519 github.com >> /etc/ssh/ssh_known_hosts 2>/dev/null || true
+
+# Avoid git safety prompts when working in bind-mounted workspace
 RUN git config --global --add safe.directory /workspace
+
 
 WORKDIR /workspace
 

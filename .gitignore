@@ -11,3 +11,6 @@ pointnet2_ops/*
 */pointnet2_ops/
 pointnet2_ops
 pointnet2_ops/
+models
+models/
+models/*
