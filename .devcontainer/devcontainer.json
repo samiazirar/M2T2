@@ -1,0 +1,32 @@
+{
+  "name": "M2T2 Dev",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "runArgs": [
+    "--gpus", "all",
+    "--shm-size=64g",
+    "--ipc=host"
+  ],
+  "mounts": [
+    "source=${localEnv:HOME}/.ssh,target=/root/.ssh,type=bind,readonly",
+    "source=${localEnv:HOME}/.codex,target=/root/.codex,type=bind"
+  ],
+  "containerEnv": {
+    "CODEX_HOME": "/root/.codex",
+    "TORCH_CUDA_ARCH_LIST": "80;86;89;90;100"
+  },
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
+  "workspaceFolder": "/workspace",
+  "forwardPorts": [7860],
+  "postCreateCommand": "/bin/bash .devcontainer/post-create.sh",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-toolsai.jupyter"
+      ]
+    }
+  }
+}
