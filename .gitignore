@@ -14,3 +14,9 @@ pointnet2_ops/
 models
 models/
 models/*
+
+gpd
+gpd/
+gpd/*
+pointnet2_ops
+pointnet2_ops/

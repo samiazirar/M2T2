@@ -51,8 +51,19 @@ python -m pip install ./pointnet2_ops
 python -m pip install -e .
 
 # Configure SSH for GitHub access (using SSH agent forwarding from host)
-# Disable strict host key checking for GitHub to avoid known_hosts issues
-export GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+# Handle SSH config permission issues when mounted from host
+if [ -f "/root/.ssh/config" ] && [ ! -w "/root/.ssh/config" ]; then
+    echo "⚠️  SSH config is read-only (mounted from host), using GIT_SSH_COMMAND workaround..."
+    # Set Git to use SSH with options that bypass the problematic config
+    export GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ControlMaster=no -F /dev/null"
+    git config --global core.sshCommand "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ControlMaster=no -F /dev/null"
+    echo "✅ SSH configuration bypassed for Git operations"
+else
+    # Standard SSH configuration when files are writable
+    export GIT_SSH_COMMAND="ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    git config --global core.sshCommand "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+    echo "✅ Standard SSH configuration applied"
+fi
 
 
 # Install git lfs
@@ -66,6 +77,7 @@ fi
 if [ ! -d "models" ]; then
   git clone https://huggingface.co/wentao-yuan/m2t2 models
 fi
+
 
 # Confirm CUDA visibility inside the container (useful during post-create logs).
 python - <<'PY'

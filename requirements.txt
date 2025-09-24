@@ -9,3 +9,9 @@ tensorboard
 torch
 torchvision
 trimesh
+flask
+omegaconf
+open3d
+pillow
+setuptools
+wheel

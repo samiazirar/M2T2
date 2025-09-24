@@ -81,3 +81,26 @@ You can visualize training curves and plots by running tensorboard on the log di
 ```
 tensorboard --logdir logs/test
 ```
+
+
+
+# Samis stuff
+
+## Using `app.py` with Optional Visualization
+
+`app.py` exposes a drop-in replacement for the GPD grasp API that accepts raw
+object and environment point clouds. Inference always runs headlessly, but you
+can enable an optional Meshcat view of the sampled scene, object cloud, and
+predicted grasps by toggling the module-level `VISUALIZE` flag.
+
+```
+export M2T2_VISUALIZE=1   # or set VISUALIZE = True inside app.py
+python app_server.py
+```
+
+When visualization is active and `meshcat-server` is running, the code opens a
+viewer showing the fused point cloud and every returned grasp pose. Leave
+`M2T2_VISUALIZE` unset (the default) to keep the service non-interactive.
+
+TODO: Use gpd to allign the code
+TODO: remove all codex/ssh github code
