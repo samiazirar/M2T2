@@ -299,117 +299,148 @@ class M2T2Predictor:
         item_colors = torch.from_numpy(item_colors_np)
         env_colors = torch.from_numpy(env_colors_np)
 
-        scene_points, scene_colors, seg = self._build_scene_tensors(
+        # Allow overriding a subset of evaluation parameters at call time.
+        eval_cfg = OmegaConf.create(
+            OmegaConf.to_container(self.cfg.eval, resolve=True)
+        )
+        override_keys = (
+            'mask_thresh', 'object_thresh', 'num_runs',
+            'surface_range', 'placement_height', 'placement_vis_radius',
+            'world_coord'
+        )
+        for key in override_keys:
+            if key in kwargs and kwargs[key] is not None:
+                eval_cfg[key] = kwargs[key]
+
+        num_runs = int(eval_cfg['num_runs']) if 'num_runs' in eval_cfg else 1
+        num_runs = max(1, num_runs)
+        object_thresh = eval_cfg['object_thresh'] if 'object_thresh' in eval_cfg else 0.0
+
+        scene_points_full, scene_colors_full, seg_full = self._build_scene_tensors(
             item_points, item_colors, env_points, env_colors
         )
-
-        scene_idx = sample_points(scene_points, self.cfg.data.num_points)
-        scene_points = scene_points[scene_idx]
-        scene_colors = scene_colors[scene_idx]
-        seg = seg[scene_idx]
-
-        scene_points_vis = scene_points.clone()
-        scene_colors_vis = scene_colors.clone()
-
-        centered_scene = scene_points - scene_points.mean(dim=0, keepdim=True)
-        rgb_mean = RGB_MEAN.to(centered_scene.device)
-        rgb_std = RGB_STD.to(centered_scene.device)
-        normalized_scene_colors = (scene_colors - rgb_mean) / rgb_std
-        inputs = torch.cat([centered_scene, normalized_scene_colors], dim=1)
-
-        object_idx = sample_points(item_points, self.cfg.data.num_object_points)
-        obj_points = item_points[object_idx]
-        obj_colors = item_colors[object_idx]
-        obj_points_vis = obj_points.clone()
-        obj_colors_vis = obj_colors.clone()
-        centered_obj = obj_points - obj_points.mean(dim=0, keepdim=True)
-        normalized_obj_colors = (obj_colors - rgb_mean) / rgb_std
-        object_inputs = torch.cat([centered_obj, normalized_obj_colors], dim=1)
 
         object_center = item_points.mean(dim=0)
         bottom_center = item_points.min(dim=0).values
 
-        placement_masks = torch.zeros(
-            self.cfg.data.num_rotations, inputs.shape[0]
-        )
-        placement_region = torch.zeros(inputs.shape[0])
+        # Buffers for visualization (captured from the first run).
+        scene_points_vis = None
+        scene_colors_vis = None
+        obj_points_vis = None
+        obj_colors_vis = None
 
-        data = {
-            'inputs': inputs,
-            'points': scene_points,
-            'seg': seg,
-            'object_inputs': object_inputs,
-            'task': 'pick',
-            'cam_pose': torch.eye(4),
-            'ee_pose': torch.eye(4),
-            'bottom_center': bottom_center,
-            'object_center': object_center,
-            'placement_masks': placement_masks,
-            'placement_region': placement_region,
-        }
-        # TODO: in the viszalzation it seems far of. So it seem that the points aare absokulute coordinates of hte scene, idk if this is a priblem
-        batch = collate([data])
-
-        if self.device.type == 'cuda':
-            to_gpu(batch)
-
-        with torch.no_grad():
-            outputs = self.model.infer(batch, self.cfg.eval)
-        
-
-        to_cpu(outputs)
+        rgb_mean = RGB_MEAN
+        rgb_std = RGB_STD
 
         tf_matrices, widths, scores = [], [], []
+        candidates = []
         n_best = kwargs.get('n_best', 1)
 
-        grasps_batches = outputs.get('grasps', [])
-        confidences_batches = outputs.get('grasp_confidence', [])
-        objectness_batches = outputs.get('objectness')
-        candidates = []
+        for run_idx in range(num_runs):
+            scene_idx = sample_points(scene_points_full, self.cfg.data.num_points)
+            scene_points = scene_points_full[scene_idx]
+            scene_colors = scene_colors_full[scene_idx]
+            seg = seg_full[scene_idx]
 
-        for batch_idx, grasp_objects in enumerate(grasps_batches):
-            if not grasp_objects:
-                continue
+            if scene_points_vis is None:
+                scene_points_vis = scene_points.clone()
+                scene_colors_vis = scene_colors.clone()
 
-            conf_objects = (
-                confidences_batches[batch_idx]
-                if batch_idx < len(confidences_batches)
-                else []
+            device_mean = rgb_mean.to(scene_points.device)
+            device_std = rgb_std.to(scene_points.device)
+            centered_scene = scene_points - scene_points.mean(dim=0, keepdim=True)
+            normalized_scene_colors = (scene_colors - device_mean) / device_std
+            inputs = torch.cat([centered_scene, normalized_scene_colors], dim=1)
+
+            object_idx = sample_points(item_points, self.cfg.data.num_object_points)
+            obj_points = item_points[object_idx]
+            obj_colors = item_colors[object_idx]
+
+            if obj_points_vis is None:
+                obj_points_vis = obj_points.clone()
+                obj_colors_vis = obj_colors.clone()
+
+            centered_obj = obj_points - obj_points.mean(dim=0, keepdim=True)
+            normalized_obj_colors = (obj_colors - device_mean) / device_std
+            object_inputs = torch.cat([centered_obj, normalized_obj_colors], dim=1)
+
+            num_scene_pts = inputs.shape[0]
+            placement_masks = torch.zeros(
+                self.cfg.data.num_rotations, num_scene_pts
             )
-            objectness_objects = None
-            if objectness_batches is not None and batch_idx < len(objectness_batches):
-                objectness_objects = objectness_batches[batch_idx]
+            placement_region = torch.zeros(num_scene_pts)
 
-            for obj_idx, grasp_tensor in enumerate(grasp_objects):
-                if grasp_tensor.numel() == 0:
+            data = {
+                'inputs': inputs,
+                'points': scene_points,
+                'seg': seg,
+                'object_inputs': object_inputs,
+                'task': 'pick',
+                'cam_pose': torch.eye(4),
+                'ee_pose': torch.eye(4),
+                'bottom_center': bottom_center,
+                'object_center': object_center,
+                'placement_masks': placement_masks,
+                'placement_region': placement_region,
+            }
+
+            batch = collate([data])
+
+            if self.device.type == 'cuda':
+                to_gpu(batch)
+
+            with torch.no_grad():
+                outputs = self.model.infer(batch, eval_cfg)
+
+            to_cpu(outputs)
+
+            grasps_batches = outputs.get('grasps', [])
+            confidences_batches = outputs.get('grasp_confidence', [])
+            objectness_batches = outputs.get('objectness')
+
+            for batch_idx, grasp_objects in enumerate(grasps_batches):
+                if not grasp_objects:
                     continue
 
-                if objectness_objects is not None and obj_idx < len(objectness_objects):
-                    obj_val = objectness_objects[obj_idx]
-                    object_score = (
-                        float(obj_val)
-                        if not isinstance(obj_val, torch.Tensor)
-                        else float(obj_val.item())
-                    )
-                    if object_score <= self.cfg.eval.object_thresh:
+                conf_objects = (
+                    confidences_batches[batch_idx]
+                    if batch_idx < len(confidences_batches)
+                    else []
+                )
+                objectness_objects = None
+                if objectness_batches is not None and batch_idx < len(objectness_batches):
+                    objectness_objects = objectness_batches[batch_idx]
+
+                for obj_idx, grasp_tensor in enumerate(grasp_objects):
+                    if grasp_tensor.numel() == 0:
                         continue
 
-                if obj_idx < len(conf_objects):
-                    conf_tensor = conf_objects[obj_idx]
-                else:
-                    conf_tensor = torch.ones(grasp_tensor.shape[0])
+                    if objectness_objects is not None and obj_idx < len(objectness_objects):
+                        obj_val = objectness_objects[obj_idx]
+                        object_score = (
+                            float(obj_val)
+                            if not isinstance(obj_val, torch.Tensor)
+                            else float(obj_val.item())
+                        )
+                        if object_score <= object_thresh:
+                            continue
 
-                grasp_np = grasp_tensor.numpy()
-                conf_np = (
-                    conf_tensor.numpy()
-                    if isinstance(conf_tensor, torch.Tensor)
-                    else np.asarray(conf_tensor)
-                )
-                if conf_np.ndim == 0:
-                    conf_np = np.full(grasp_np.shape[0], float(conf_np))
+                    if obj_idx < len(conf_objects):
+                        conf_tensor = conf_objects[obj_idx]
+                    else:
+                        conf_tensor = torch.ones(grasp_tensor.shape[0])
 
-                for mat, score in zip(grasp_np, conf_np):
-                    candidates.append((float(score), mat))
+                    grasp_np = grasp_tensor.numpy()
+                    conf_np = (
+                        conf_tensor.numpy()
+                        if isinstance(conf_tensor, torch.Tensor)
+                        else np.asarray(conf_tensor)
+                    )
+                    if conf_np.ndim == 0:
+                        conf_np = np.full(grasp_np.shape[0], float(conf_np))
+
+                    for mat, score in zip(grasp_np, conf_np):
+                        candidates.append((float(score), mat))
 
         if candidates:
             candidates.sort(key=lambda item: item[0], reverse=True)
@@ -427,6 +458,13 @@ class M2T2Predictor:
             tf_arr = np.empty((0, 4, 4), dtype=np.float32)
             widths_arr = np.empty(0, dtype=np.float32)
             scores_arr = np.empty(0, dtype=np.float32)
+
+        if scene_points_vis is None:
+            scene_points_vis = scene_points_full
+            scene_colors_vis = scene_colors_full
+        if obj_points_vis is None:
+            obj_points_vis = item_points
+            obj_colors_vis = item_colors
 
         _visualize_results(
             scene_points_vis,

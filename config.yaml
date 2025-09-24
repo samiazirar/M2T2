@@ -120,7 +120,7 @@ eval:  # Evaluation configuration
     checkpoint: ''  # Checkpoint path to load for inference
     mask_thresh: 0.4  # Threshold for accepting predicted grasp masks
     object_thresh: 0.4  # Threshold on objectness scores during inference
-    num_runs: 1  # Number of evaluation repetitions
+    num_runs: 5  # Number of evaluation repetitions
     world_coord: True  # Evaluate in world coordinates if True
     surface_range: 0.02  # Range around table surface to flatten
     placement_height: 0.02  # Height above surface for placements
