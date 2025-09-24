@@ -1,127 +1,127 @@
-data:
-    root_dir: ''
-    num_points: 16384
-    num_object_points: 1024
-    world_coord: True
-    num_rotations: 8
-    grid_resolution: 0.01
-    jitter_scale: 0.
-    contact_radius: 0.005
-    robot_prob: 1.0
-    offset_bins: [
+data:  # Dataset sampling options
+    root_dir: ''  # Root directory containing scenes
+    num_points: 16384  # Number of scene points sampled per example
+    num_object_points: 10240  # Number of object-only points sampled per example
+    world_coord: True  # Whether to keep points in world frame instead of camera frame
+    num_rotations: 8  # Discrete placement rotation bins
+    grid_resolution: 0.01  # XY grid size used to aggregate object points
+    jitter_scale: 0.  # Gaussian noise applied to table points
+    contact_radius: 0.005  # Distance threshold for associating contacts to points
+    robot_prob: 1.0  # Probability of keeping robot/table points in the scene
+    offset_bins: [  # Bin edges for discretizing gripper offsets
         0, 0.00794435329, 0.0158887021, 0.0238330509,
         0.0317773996, 0.0397217484, 0.0476660972,
         0.055610446, 0.0635547948, 0.0714991435, 0.08
     ]
+# more points for scnee more it can also predict grasp for other
+m2t2:  # Network architecture and loss configuration
+    scene_encoder:  # PointNet++ backbone for full scene
+        type: 'pointnet2_msg'  # Encoder variant
+        num_points: 16384  # Number of input points expected by the backbone
+        downsample: 4  # Sampling ratio for hierarchical set abstraction
+        radius: 0.05  # Initial ball query radius
+        radius_mult: 2  # Multiplier applied to radius per layer
+        use_rgb: False  # Whether to append RGB to scene coordinates
 
-m2t2:
-    scene_encoder:
-        type: 'pointnet2_msg'
-        num_points: 16384
-        downsample: 4
-        radius: 0.05
-        radius_mult: 2
-        use_rgb: False
+    object_encoder:  # PointNet++ classifier-style encoder for object crops
+        type: 'pointnet2_msg_cls'  # Encoder variant for object stream
+        num_points: 10240  # Number of object points provided to encoder
+        downsample: 4  # Sampling ratio for object abstraction layers
+        radius: 0.05  # Initial ball query radius for object encoder
+        radius_mult: 2  # Multiplier applied to object radius per layer
+        use_rgb: False  # Whether to append RGB to object points
 
-    object_encoder:
-        type: 'pointnet2_msg_cls'
-        num_points: 1024
-        downsample: 4
-        radius: 0.05
-        radius_mult: 2
-        use_rgb: False
+    contact_decoder:  # Transformer decoder that predicts contact masks
+        mask_feature: 'res0'  # Scene feature key used as mask basis
+        in_features: ['res1', 'res2', 'res3']  # Scene feature levels providing context
+        place_feature: 'res4'  # Object feature key used for placement prompts
+        object_in_features: ['res1', 'res2', 'res3']  # Object feature levels fed into decoder
+        embed_dim: 256  # Transformer embedding size
+        feedforward_dim: 512  # Hidden size in feedforward layers
+        num_scales: 3  # Number of feature scales attended in rotation
+        num_layers: 9  # Decoder depth
+        num_heads: 8  # Multi-head attention heads
+        num_grasp_queries: 100  # Learnable queries for grasp candidates
+        num_place_queries: 8  # Learnable queries for placement candidates
+        language_context_length: 0  # Reserved slots for language tokens
+        language_token_dim: 256  # Dimensionality of optional language embeddings
+        use_attn_mask: True  # Whether to use predicted masks to gate attention
+        use_task_embed: True  # Whether to add task-specific embeddings
+        activation: 'GELU'  # Nonlinearity used throughout decoder
 
-    contact_decoder:
-        mask_feature: 'res0'
-        in_features: ['res1', 'res2', 'res3']
-        place_feature: 'res4'
-        object_in_features: ['res1', 'res2', 'res3']
-        embed_dim: 256
-        feedforward_dim: 512
-        num_scales: 3
-        num_layers: 9
-        num_heads: 8
-        num_grasp_queries: 100
-        num_place_queries: 8
-        language_context_length: 0
-        language_token_dim: 256
-        use_attn_mask: True
-        use_task_embed: True
-        activation: 'GELU'
-
-    action_decoder:
-        use_embed: False
-        max_num_pred: null
-        hidden_dim: 256
-        num_layers: 2
-        num_params: 0
-        activation: 'GELU'
-        offset_bins: [
+    action_decoder:  # MLP that outputs grasp parameters from embeddings
+        use_embed: False  # Whether to concatenate learned embeddings
+        max_num_pred: null  # Optional cap on number of predicted grasps
+        hidden_dim: 256  # Hidden layer width in action decoder
+        num_layers: 2  # Number of MLP layers
+        num_params: 0  # Additional parameter dimensions to regress
+        activation: 'GELU'  # Activation function for MLP
+        offset_bins: [  # Bin edges shared with training loss for offsets
             0, 0.00794435329, 0.0158887021, 0.0238330509,
             0.0317773996, 0.0397217484, 0.0476660972,
             0.055610446, 0.0635547948, 0.0714991435, 0.08
         ]
 
-    matcher:
-        object_weight: 2.0
-        bce_weight: 5.0
-        dice_weight: 5.0
+    matcher:  # Hungarian matcher weights
+        object_weight: 2.0  # Cost weight for matched object queries
+        bce_weight: 5.0  # Cost weight for BCE component
+        dice_weight: 5.0  # Cost weight for DICE component
 
-    grasp_loss:
-        object_weight: 2.0
-        not_object_weight: 0.1
-        pseudo_ce_weight: 0.0
-        bce_topk: 512
-        bce_weight: 5.0
-        dice_weight: 5.0
-        deep_supervision: True
-        recompute_indices: True
-        adds_pred2gt: 100.0
-        adds_gt2pred: 0.0
-        adds_per_obj: False
-        contact_dir: 0.0
-        approach_dir: 0.0
-        offset: 1.0
-        param: 1.0
-        offset_bin_weights: [
+    grasp_loss:  # Loss weights for grasp supervision
+        object_weight: 2.0  # Scaling for matched objectness BCE
+        not_object_weight: 0.1  # Weighting factor for unmatched objectness
+        pseudo_ce_weight: 0.0  # Weight for pseudo-label cross-entropy
+        bce_topk: 512  # Number of top logits used in mask BCE
+        bce_weight: 5.0  # Weight of BCE loss on masks
+        dice_weight: 5.0  # Weight of DICE loss on masks
+        deep_supervision: True  # Apply losses on intermediate decoder layers
+        recompute_indices: True  # Re-run matching for each intermediate layer
+        adds_pred2gt: 100.0  # Weight for ADD-S pred-to-GT loss
+        adds_gt2pred: 0.0  # Weight for ADD-S GT-to-pred loss
+        adds_per_obj: False  # Whether to average ADD-S per object instance
+        contact_dir: 0.0  # Weight on contact direction matches
+        approach_dir: 0.0  # Weight on approach vector matches
+        offset: 1.0  # Weight on discretized offset classification
+        param: 1.0  # Weight on additional parameter regression
+        offset_bin_weights: [  # Class weights for offset bins
             0.16652107, 0.21488856, 0.37031708, 0.55618503, 0.75124664,
             0.93943357, 1.07824539, 1.19423112, 1.55731375, 3.17161779
         ]
 
-    place_loss:
-        bce_topk: 1024
-        bce_weight: 5.0
-        dice_weight: 5.0
-        deep_supervision: True
+    place_loss:  # Loss weights for placement supervision
+        bce_topk: 10240  # Number of mask logits for placement BCE
+        bce_weight: 5.0  # Weight of placement BCE loss
+        dice_weight: 5.0  # Weight of placement DICE loss
+        deep_supervision: True  # Apply placement loss to intermediate layers
 
-optimizer:
-    type: 'ADAMW'
-    base_batch_size: 16
-    base_lr: 0.0001
-    backbone_multiplier: 1.0
-    grad_clip: 0.01
-    weight_decay: 0.05
+optimizer:  # Optimizer configuration
+    type: 'ADAMW'  # Optimizer choice
+    base_batch_size: 16  # Reference batch size for scaling learning rate
+    base_lr: 0.0001  # Base learning rate
+    backbone_multiplier: 1.0  # LR multiplier for backbone parameters
+    grad_clip: 0.01  # Gradient clipping norm
+    weight_decay: 0.05  # Weight decay factor
 
-train:
-    mask_thresh: 0.5
-    num_gpus: 8
-    port: '1234'
-    batch_size: 16
-    num_workers: 8
-    num_epochs: 160
-    print_freq: 25
-    plot_freq: 50
-    save_freq: 10
-    checkpoint: null
-    log_dir: ''
+train:  # Training loop settings
+    mask_thresh: 0.5  # Threshold for binary grasp masks during training
+    num_gpus: 8  # Number of GPUs expected for distributed training
+    port: '1234'  # Distributed training communication port
+    batch_size: 16  # Training batch size per iteration
+    num_workers: 8  # Dataloader worker count
+    num_epochs: 160  # Number of training epochs
+    print_freq: 25  # Logging frequency in iterations
+    plot_freq: 50  # Visualization dump frequency
+    save_freq: 10  # Checkpoint save interval in epochs
+    checkpoint: null  # Path to resume checkpoint (if any)
+    log_dir: ''  # Directory to store training logs
 
-eval:
-    data_dir: ''
-    checkpoint: ''
-    mask_thresh: 0.4
-    object_thresh: 0.4
-    num_runs: 1
-    world_coord: True
-    surface_range: 0.02
-    placement_height: 0.02
-    placement_vis_radius: 0.3
+eval:  # Evaluation configuration
+    data_dir: ''  # Dataset path for evaluation runs
+    checkpoint: ''  # Checkpoint path to load for inference
+    mask_thresh: 0.4  # Threshold for accepting predicted grasp masks
+    object_thresh: 0.4  # Threshold on objectness scores during inference
+    num_runs: 1  # Number of evaluation repetitions
+    world_coord: True  # Evaluate in world coordinates if True
+    surface_range: 0.02  # Range around table surface to flatten
+    placement_height: 0.02  # Height above surface for placements
+    placement_vis_radius: 0.3  # Radius for placement visualization subset
