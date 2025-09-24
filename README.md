@@ -95,7 +95,7 @@ predicted grasps by toggling the module-level `VISUALIZE` flag.
 
 ```
 export M2T2_VISUALIZE=1   # or set VISUALIZE = True inside app.py
-python app_server.py
+python app_server.py 
 ```
 
 When visualization is active and `meshcat-server` is running, the code opens a
@@ -104,3 +104,4 @@ viewer showing the fused point cloud and every returned grasp pose. Leave
 
 TODO: Use gpd to allign the code
 TODO: remove all codex/ssh github code
+ 

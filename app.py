@@ -288,75 +288,6 @@ class M2T2Predictor:
 
         return scene_points, scene_colors, seg
 
-    def _select_target_object(self, contact_sets, target_points, target_bounds=None):
-        """Choose the predicted object whose contacts are closest to the target cloud.
-        
-        Enhanced version that uses spatial overlap and statistical measures for better matching.
-        """
-
-        if not contact_sets:
-            return None
-
-        target_points = target_points.to(torch.float32)
-        
-        # Calculate target object bounds for spatial filtering
-        if target_bounds is None:
-            target_min = target_points.min(dim=0).values
-            target_max = target_points.max(dim=0).values
-            # Expand bounds slightly to account for grasp approach margins
-            margin = 0.02  # 2cm margin
-            target_bounds = (target_min - margin, target_max + margin)
-        
-        best_idx, best_score = None, float('inf')
-        candidate_scores = []
-
-        for idx, contacts in enumerate(contact_sets):
-            if not isinstance(contacts, torch.Tensor):
-                contacts = torch.as_tensor(contacts)
-            contact_points = contacts.to(torch.float32)
-            if contact_points.ndim != 2 or contact_points.shape[0] == 0:
-                continue
-            
-            # Filter contacts that are within target object bounds
-            target_min, target_max = target_bounds
-            within_bounds = (
-                (contact_points >= target_min.unsqueeze(0)).all(dim=1) &
-                (contact_points <= target_max.unsqueeze(0)).all(dim=1)
-            )
-            
-            if not within_bounds.any():
-                # No contacts within target bounds - likely wrong object
-                candidate_scores.append(float('inf'))
-                continue
-            
-            # Use only contacts within bounds for distance calculation
-            valid_contacts = contact_points[within_bounds]
-            
-            try:
-                dists = torch.cdist(valid_contacts, target_points)
-            except RuntimeError:
-                # Fallback for extremely large point sets where cdist can OOM
-                valid_contacts = valid_contacts[:512]
-                target_subset = target_points[:1024]
-                dists = torch.cdist(valid_contacts, target_subset)
-            
-            # Calculate multiple scoring metrics
-            min_dists = dists.min(dim=1).values
-            mean_dist = min_dists.mean().item()
-            median_dist = min_dists.median().item()
-            overlap_ratio = within_bounds.float().mean().item()
-            
-            # Combined score: lower is better
-            # Prioritize objects with high overlap and low distances
-            score = mean_dist * 0.6 + median_dist * 0.3 + (1.0 - overlap_ratio) * 0.1
-            candidate_scores.append(score)
-            
-            if score < best_score:
-                best_score = score
-                best_idx = idx
-        
-        return best_idx
-
     def predict_from_clouds(self, item_cloud, env_cloud, **kwargs):
         """Run M2T2 inference on explicit object/environment point clouds."""
 
@@ -372,12 +303,6 @@ class M2T2Predictor:
             item_points, item_colors, env_points, env_colors
         )
 
-        # Store original target object bounds before sampling
-        target_bounds = (
-            item_points.min(dim=0).values,
-            item_points.max(dim=0).values
-        )
-        
         scene_idx = sample_points(scene_points, self.cfg.data.num_points)
         scene_points = scene_points[scene_idx]
         scene_colors = scene_colors[scene_idx]
@@ -422,7 +347,7 @@ class M2T2Predictor:
             'placement_masks': placement_masks,
             'placement_region': placement_region,
         }
-
+        # TODO: in the viszalzation it seems far of. So it seem that the points aare absokulute coordinates of hte scene, idk if this is a priblem
         batch = collate([data])
 
         if self.device.type == 'cuda':
@@ -439,8 +364,8 @@ class M2T2Predictor:
 
         grasps_batches = outputs.get('grasps', [])
         confidences_batches = outputs.get('grasp_confidence', [])
-        contacts_batches = outputs.get('grasp_contacts', [])
         objectness_batches = outputs.get('objectness')
+        candidates = []
 
         for batch_idx, grasp_objects in enumerate(grasps_batches):
             if not grasp_objects:
@@ -451,72 +376,48 @@ class M2T2Predictor:
                 if batch_idx < len(confidences_batches)
                 else []
             )
-            contact_objects = (
-                contacts_batches[batch_idx]
-                if batch_idx < len(contacts_batches)
-                else []
-            )
             objectness_objects = None
             if objectness_batches is not None and batch_idx < len(objectness_batches):
                 objectness_objects = objectness_batches[batch_idx]
 
-            target_idx = self._select_target_object(contact_objects, obj_points, target_bounds)
-            if target_idx is None or target_idx >= len(grasp_objects):
-                print(f"Warning: Could not find valid target object. Available objects: {len(grasp_objects)}")
-                continue
-
-            grasp_tensor = grasp_objects[target_idx]
-            if grasp_tensor.numel() == 0:
-                continue
-
-            # Additional validation: check if grasps are near target object
-            if target_idx < len(contact_objects) and len(contact_objects[target_idx]) > 0:
-                contacts = contact_objects[target_idx]
-                if isinstance(contacts, torch.Tensor):
-                    contact_points = contacts.to(torch.float32)
-                    target_min, target_max = target_bounds
-                    # Check if most contacts are within expanded target bounds
-                    margin = 0.05  # 5cm margin for grasp approaches
-                    expanded_min = target_min - margin
-                    expanded_max = target_max + margin
-                    within_expanded = (
-                        (contact_points >= expanded_min.unsqueeze(0)).all(dim=1) &
-                        (contact_points <= expanded_max.unsqueeze(0)).all(dim=1)
-                    )
-                    overlap_ratio = within_expanded.float().mean().item()
-                    if overlap_ratio < 0.3:  # Less than 30% overlap - likely wrong object
-                        print(f"Warning: Selected object {target_idx} has low spatial overlap ({overlap_ratio:.2f}) with target")
-                        continue
-
-            if target_idx < len(conf_objects):
-                conf_tensor = conf_objects[target_idx]
-            else:
-                conf_tensor = torch.ones(grasp_tensor.shape[0])
-
-            if objectness_objects is not None and target_idx < len(objectness_objects):
-                obj_val = objectness_objects[target_idx]
-                object_score = (
-                    float(obj_val)
-                    if not isinstance(obj_val, torch.Tensor)
-                    else float(obj_val.item())
-                )
-                if object_score <= self.cfg.eval.object_thresh:
+            for obj_idx, grasp_tensor in enumerate(grasp_objects):
+                if grasp_tensor.numel() == 0:
                     continue
 
-            grasp_np = grasp_tensor.numpy()
-            conf_np = (
-                conf_tensor.numpy()
-                if isinstance(conf_tensor, torch.Tensor)
-                else np.asarray(conf_tensor)
-            )
-            if conf_np.ndim == 0:
-                conf_np = np.full(grasp_np.shape[0], float(conf_np))
+                if objectness_objects is not None and obj_idx < len(objectness_objects):
+                    obj_val = objectness_objects[obj_idx]
+                    object_score = (
+                        float(obj_val)
+                        if not isinstance(obj_val, torch.Tensor)
+                        else float(obj_val.item())
+                    )
+                    if object_score <= self.cfg.eval.object_thresh:
+                        continue
 
-            top_idx = np.argsort(conf_np)[-n_best:][::-1]
-            for idx in top_idx:
-                tf_matrices.append(grasp_np[idx])
+                if obj_idx < len(conf_objects):
+                    conf_tensor = conf_objects[obj_idx]
+                else:
+                    conf_tensor = torch.ones(grasp_tensor.shape[0])
+
+                grasp_np = grasp_tensor.numpy()
+                conf_np = (
+                    conf_tensor.numpy()
+                    if isinstance(conf_tensor, torch.Tensor)
+                    else np.asarray(conf_tensor)
+                )
+                if conf_np.ndim == 0:
+                    conf_np = np.full(grasp_np.shape[0], float(conf_np))
+
+                for mat, score in zip(grasp_np, conf_np):
+                    candidates.append((float(score), mat))
+
+        if candidates:
+            candidates.sort(key=lambda item: item[0], reverse=True)
+            selected = candidates[:n_best]
+            for score, mat in selected:
+                tf_matrices.append(mat)
                 widths.append(0.08)
-                scores.append(conf_np[idx])
+                scores.append(score)
 
         if tf_matrices:
             tf_arr = np.asarray(tf_matrices)
