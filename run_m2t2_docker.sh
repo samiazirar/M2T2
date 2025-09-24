@@ -5,19 +5,14 @@ set -euo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 HOST_WORKSPACE=${HOST_WORKSPACE:-$SCRIPT_DIR}
-IMAGE_NAME=${IMAGE_NAME:-m2t2}
+IMAGE_NAME=${IMAGE_NAME:-m2t2:cu121}
 HOST_PORT=${HOST_PORT:-5000}
 CONTAINER_PORT=${CONTAINER_PORT:-5000}
-DISPLAY_NUMBER=${DISPLAY_NUMBER:-99}
+DISPLAY_NUMBER=2
 
-DOCKER_BIN=${DOCKER_BIN:-docker}
 
-if ! command -v "${DOCKER_BIN}" >/dev/null 2>&1; then
-  echo "Error: ${DOCKER_BIN} command not found" >&2
-  exit 1
-fi
 
-"${DOCKER_BIN}" run --gpus all -it --rm \
+docker run --gpus all -it --rm \
   -p "${HOST_PORT}:${CONTAINER_PORT}" \
   -v "${HOST_WORKSPACE}:/workspace" \
   -v /tmp/.X11-unix:/tmp/.X11-unix \
