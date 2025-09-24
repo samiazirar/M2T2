@@ -16,20 +16,12 @@ from io import BytesIO
 
 
 # Try to import PCL for point cloud handling
-has_o3d = False
+pcl = None
 
-try:
-    import pcl
-except ImportError:
-    print("PCL Python bindings not found. Will try Open3D as fallback.")
-    pcl = None
-    # Try to import Open3D as fallback
-    try:
-        import open3d as o3d
-        print("Open3D found, will use as fallback for point cloud handling.")
-        has_o3d = True
-    except ImportError:
-        raise ImportError("Neither PCL nor Open3D found. Cannot handle point clouds.")
+print("Will use Open3D instead of pcl.")
+import open3d as o3d
+print("Open3D found, will use as fallback for point cloud handling.")
+has_o3d = True
 # Import app.py for the M2T2-based grasp prediction functions
 # Note: This now uses M2T2 neural network instead of GPD, but maintains the same API
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
