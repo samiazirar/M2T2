@@ -274,17 +274,52 @@ class M2T2Predictor:
         return points, colors
 
     def _build_scene_tensors(self, item_points, item_colors, env_points, env_colors):
-        """Concatenate object and environment tensors and build segmentation mask."""
+        """Sample the scene while retaining all item points."""
 
-        if env_points.numel() == 0:
-            scene_points = item_points.clone()
-            scene_colors = item_colors.clone()
-        else:
-            scene_points = torch.cat([item_points, env_points], dim=0)
-            scene_colors = torch.cat([item_colors, env_colors], dim=0)
+        device = item_points.device
+        num_scene_points = int(getattr(self.cfg.data, 'num_points', item_points.shape[0]))
 
-        seg = torch.zeros(scene_points.shape[0], dtype=torch.bool)
-        seg[: item_points.shape[0]] = True
+        env_available = env_points.numel() > 0
+
+        if num_scene_points <= 0:
+            tensors = [(item_points, item_colors, torch.ones(item_points.shape[0], dtype=torch.bool, device=device))]
+            if env_available:
+                tensors.append((
+                    env_points,
+                    env_colors,
+                    torch.zeros(env_points.shape[0], dtype=torch.bool, device=device),
+                ))
+            scene_points = torch.cat([pts for pts, _, _ in tensors], dim=0)
+            scene_colors = torch.cat([cols for _, cols, _ in tensors], dim=0)
+            seg = torch.cat([mask for _, _, mask in tensors], dim=0)
+            return scene_points, scene_colors, seg
+
+        item_count = item_points.shape[0]
+
+        if item_count >= num_scene_points:
+            idx = sample_points(item_points, num_scene_points)
+            sampled_points = item_points[idx]
+            sampled_colors = item_colors[idx]
+            seg = torch.ones(num_scene_points, dtype=torch.bool, device=device)
+            return sampled_points, sampled_colors, seg
+
+        remaining = num_scene_points - item_count
+
+        scene_points_list = [item_points]
+        scene_colors_list = [item_colors]
+        seg_list = [torch.ones(item_count, dtype=torch.bool, device=device)]
+
+        if remaining > 0 and env_available:
+            env_idx = sample_points(env_points, remaining)
+            env_points_sample = env_points[env_idx]
+            env_colors_sample = env_colors[env_idx]
+            scene_points_list.append(env_points_sample)
+            scene_colors_list.append(env_colors_sample)
+            seg_list.append(torch.zeros(env_points_sample.shape[0], dtype=torch.bool, device=device))
+
+        scene_points = torch.cat(scene_points_list, dim=0)
+        scene_colors = torch.cat(scene_colors_list, dim=0)
+        seg = torch.cat(seg_list, dim=0)
 
         return scene_points, scene_colors, seg
 
@@ -302,11 +337,6 @@ class M2T2Predictor:
         scene_points, scene_colors, seg = self._build_scene_tensors(
             item_points, item_colors, env_points, env_colors
         )
-
-        scene_idx = sample_points(scene_points, self.cfg.data.num_points)
-        scene_points = scene_points[scene_idx]
-        scene_colors = scene_colors[scene_idx]
-        seg = seg[scene_idx]
 
         scene_points_vis = scene_points.clone()
         scene_colors_vis = scene_colors.clone()
