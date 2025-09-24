@@ -52,7 +52,7 @@ from m2t2.train_utils import to_cpu, to_gpu
 RGB_MEAN = torch.tensor([0.485, 0.456, 0.406], dtype=torch.float32)
 RGB_STD = torch.tensor([0.229, 0.224, 0.225], dtype=torch.float32)
 # VISUALIZE = os.environ.get("M2T2_VISUALIZE", "0").lower() in {"1", "true", "yes"}
-VISUALIZE = True #True
+VISUALIZE = False #True
 
 def _visualize_results(
     scene_points,
