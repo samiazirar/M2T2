@@ -551,8 +551,6 @@ def get_predictor():
     This function implements a singleton pattern to ensure only one model
     instance is loaded in memory, which is more efficient for repeated
     predictions.
-    
-    Args:
     Returns:
         M2T2Predictor: The global predictor instance.
         
