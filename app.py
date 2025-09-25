@@ -390,6 +390,11 @@ class M2T2Predictor:
                 to_gpu(batch)
 
             with torch.no_grad():
+                print("Running M2T2 inference...")
+                print(f"Input points: {batch['points'].shape[1]}"
+                      f", Object points: {batch['object_inputs'].shape[1]}"
+                      f", Device: {self.device}"
+                      )
                 outputs = self.model.infer(batch, eval_cfg)
 
             to_cpu(outputs)
