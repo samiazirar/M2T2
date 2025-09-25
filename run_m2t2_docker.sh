@@ -14,6 +14,7 @@ DISPLAY_NUMBER=2
 
 docker run --gpus all -it --rm \
   -p "${HOST_PORT}:${CONTAINER_PORT}" \
+  -p 7000:7000 \
   -v "${HOST_WORKSPACE}:/workspace" \
   -v /tmp/.X11-unix:/tmp/.X11-unix \
   -e DISPLAY=":${DISPLAY_NUMBER}" \
