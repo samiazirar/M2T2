@@ -24,3 +24,7 @@ pointnet2_ops/
 data
 data/
 data/*
+
+gdp_tb_remove
+gdp_tb_remove/
+gdp_tb_remove/*
