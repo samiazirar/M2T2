@@ -1,7 +1,7 @@
 data:  # Dataset sampling options
     root_dir: ''  # Root directory containing scenes
-    num_points: 163840  # Number of scene points sampled per example
-    num_object_points: 10240  # Number of object-only points sampled per example
+    num_points: 16384  # Number of scene points sampled per example
+    num_object_points: 1024  # Number of object-only points sampled per example
     world_coord: True  # Whether to keep points in world frame instead of camera frame
     num_rotations: 8  # Discrete placement rotation bins
     grid_resolution: 0.01  # XY grid size used to aggregate object points
@@ -17,7 +17,7 @@ data:  # Dataset sampling options
 m2t2:  # Network architecture and loss configuration
     scene_encoder:  # PointNet++ backbone for full scene
         type: 'pointnet2_msg'  # Encoder variant
-        num_points: 163840  # Number of input points expected by the backbone
+        num_points: 16384  # Number of input points expected by the backbone
         downsample: 4  # Sampling ratio for hierarchical set abstraction
         radius: 0.05  # Initial ball query radius
         radius_mult: 2  # Multiplier applied to radius per layer
@@ -25,7 +25,7 @@ m2t2:  # Network architecture and loss configuration
 
     object_encoder:  # PointNet++ classifier-style encoder for object crops
         type: 'pointnet2_msg_cls'  # Encoder variant for object stream
-        num_points: 10240  # Number of object points provided to encoder
+        num_points: 1024  # Number of object points provided to encoder
         downsample: 4  # Sampling ratio for object abstraction layers
         radius: 0.05  # Initial ball query radius for object encoder
         radius_mult: 2  # Multiplier applied to object radius per layer
