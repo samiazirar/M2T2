@@ -1,6 +1,6 @@
 data:  # Dataset sampling options
     root_dir: ''  # Root directory containing scenes
-    num_points: 16384  # Number of scene points sampled per example
+    num_points: 163840  # Number of scene points sampled per example
     num_object_points: 10240  # Number of object-only points sampled per example
     world_coord: True  # Whether to keep points in world frame instead of camera frame
     num_rotations: 8  # Discrete placement rotation bins
@@ -17,7 +17,7 @@ data:  # Dataset sampling options
 m2t2:  # Network architecture and loss configuration
     scene_encoder:  # PointNet++ backbone for full scene
         type: 'pointnet2_msg'  # Encoder variant
-        num_points: 16384  # Number of input points expected by the backbone
+        num_points: 163840  # Number of input points expected by the backbone
         downsample: 4  # Sampling ratio for hierarchical set abstraction
         radius: 0.05  # Initial ball query radius
         radius_mult: 2  # Multiplier applied to radius per layer
